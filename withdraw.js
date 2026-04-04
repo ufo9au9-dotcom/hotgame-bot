@@ -5,15 +5,79 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
 const API_URL = 'https://ufo9.asia/getLiveStat.php';
-const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec'; // 👈 放你的 /exec 链接
+const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec'; // 👈 改这里
 const MIN_AMOUNT = 500;
 
+// ===== 金额处理 =====
 function absAmount(value) {
   const cleaned = String(value ?? '').replace(/,/g, '').trim();
   return Math.abs(parseFloat(cleaned) || 0);
 }
 
-// ✅ 读取 Sheet 已发送 ID
+// ===== Caption分级系统 =====
+function getCaption(amount, provider, mobile) {
+  if (amount >= 5000) {
+    return `🎉 <b>CONGRATULATIONS!</b>
+━━━━━━━━━━━━━━
+👑 <b>JACKPOT PAYOUT CONFIRMED</b>
+💰 <b>AUD ${amount.toFixed(2)}</b>
+🎰 ${provider}
+📱 ${mobile}
+━━━━━━━━━━━━━━
+⚡ REAL WIN • REAL PAYOUT  
+🐸 Australia Trusted Platform
+🪙 Deposit 5–15s  
+🪙 Withdraw 2–5min  
+━━━━━━━━━━━━━━
+💎 <a href="https://ufo9.asia/RFUFO9TLG">START WINNING NOW</a >`;
+  }
+
+  if (amount >= 2000) {
+    return `🎉 <b>CONGRATULATIONS!</b>
+━━━━━━━━━━━━━━
+🚨 <b>MEGA WIN JUST PAID</b>
+💰 <b>AUD ${amount.toFixed(2)}</b>
+🎰 ${provider}
+📱 ${mobile}
+━━━━━━━━━━━━━━
+⚡ Instant Withdraw • AU Trusted
+🪙 Deposit 5–15s  
+🪙 Withdraw 2–5min  
+━━━━━━━━━━━━━━
+🔥 <a href="https://ufo9.asia/RFUFO9TLG">JOIN NOW & WIN BIG</a >`;
+  }
+
+  if (amount >= 1000) {
+    return `🎉 <b>CONGRATULATIONS!</b>
+━━━━━━━━━━━━━━
+👽 <b>UFO9 BIG WIN ALERT</b>
+💰 <b>AUD ${amount.toFixed(2)}</b>
+🎰 <b>${provider}</b>
+📱 ${mobile}
+━━━━━━━━━━━━━━
+⚡ FAST PAYOUT SYSTEM  
+🐸 Trusted by AU Players
+🪙 Deposit 5–15s ✅  
+🪙 Withdraw 2–5min ✅  
+━━━━━━━━━━━━━━
+🔥 <a href="https://ufo9.asia/RFUFO9TLG">CLICK NOW & WIN</a >`;
+  }
+
+  return `🎉 <b>CONGRATULATIONS!</b>
+━━━━━━━━━━━━━━
+👽 <b>UFO9 WIN UPDATE</b>
+💰 <b>AUD ${amount.toFixed(2)}</b>
+🎰 ${provider}
+📱 ${mobile}
+━━━━━━━━━━━━━━
+⚡ Fast & Secure Payout
+🪙 Deposit 5–15s  
+🪙 Withdraw 2–5min  
+━━━━━━━━━━━━━━
+🌐 <a href="https://ufo9.asia/RFUFO9TLG">PLAY NOW</a >`;
+}
+
+// ===== 读取Sheet =====
 async function getSentIds() {
   const res = await fetch(SHEET_API);
   const json = await res.json();
@@ -23,7 +87,7 @@ async function getSentIds() {
   return new Set((json.data || []).map(x => String(x.fid)));
 }
 
-// ✅ 写入 Sheet
+// ===== 写入Sheet =====
 async function saveToSheet(row) {
   const res = await fetch(SHEET_API, {
     method: 'POST',
@@ -36,28 +100,12 @@ async function saveToSheet(row) {
   if (!json.ok) throw new Error('Sheet write failed');
 }
 
-// ✅ 发 Telegram 图片
+// ===== 发Telegram =====
 async function sendPhoto(imagePath, caption) {
   const fileBuffer = fs.readFileSync(imagePath);
 
   const form = new FormData();
-  const CHAT_IDS = CHAT_ID.split(',');
-
-for (const id of CHAT_IDS) {
-  const form = new FormData();
-  form.append('chat_id', id.trim());
-  form.append('caption', caption);
-  form.append('parse_mode', 'HTML');
-  form.append('disable_web_page_preview', 'true');
-  form.append('photo', new Blob([fs.readFileSync('hotgame.png')]), 'hotgame.png');
-
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: 'POST',
-    body: form
-  });
-
-  console.log(`Sent to ${id}`);
-}
+  form.append('chat_id', CHAT_ID);
   form.append('caption', caption);
   form.append('parse_mode', 'HTML');
   form.append('disable_web_page_preview', 'true');
@@ -74,6 +122,7 @@ for (const id of CHAT_IDS) {
   if (!json.ok) throw new Error('Telegram send failed');
 }
 
+// ===== 主流程 =====
 (async () => {
   try {
     console.log('Fetching live stat...');
@@ -88,30 +137,25 @@ for (const id of CHAT_IDS) {
     });
 
     const json = await res.json();
-    console.log('FULL API:', JSON.stringify(json, null, 2));
 
     if (json?.status !== 'SUCCESS') {
       throw new Error('API not success');
     }
 
     const withdraws = json?.data?.WITHDRAW || [];
-    console.log('Total withdraw:', withdraws.length);
 
     if (!withdraws.length) {
       console.log('No withdraw data');
       return;
     }
 
-    // ✅ 已发记录
     const sentSet = await getSentIds();
-    console.log('Already sent count:', sentSet.size);
 
-    // ✅ 转换 + 判断
     const checked = withdraws.map(w => {
       const amount = absAmount(w.cash);
 
       return {
-        id: String(w.id || ''), // 🔥 关键改这里
+        id: String(w.id || ''), // 🔥 用 id
         mobile: String(w.mobile || ''),
         amount,
         site: String(w.site || ''),
@@ -119,19 +163,13 @@ for (const id of CHAT_IDS) {
       };
     });
 
-    console.log('CHECKED:', JSON.stringify(checked, null, 2));
-
-    // ✅ 筛选
     const toSend = checked.filter(x => x.qualifies && !sentSet.has(x.id));
-
-    console.log('TO SEND:', JSON.stringify(toSend, null, 2));
 
     if (!toSend.length) {
       console.log('No new big withdraw');
       return;
     }
 
-    // 👉 最多发2条
     const finalList = toSend.slice(0, 2);
 
     for (const w of finalList) {
@@ -143,27 +181,16 @@ for (const id of CHAT_IDS) {
         time: new Date().toISOString()
       };
 
-      console.log('Generating image:', data);
-
       await generateImage(data);
 
       if (!fs.existsSync('withdraw.png')) {
         throw new Error('Image not created');
       }
 
-      const caption = `
-<b>💸 WITHDRAWAL ALERT</b>
-
-📱 ${data.mobile}
-🎰 ${data.provider}
-💰 AUD ${data.amount.toFixed(2)}
-
-👉 <a href=" ">CLICK NOW</a >
-`;
+      const caption = getCaption(data.amount, data.provider, data.mobile);
 
       await sendPhoto('withdraw.png', caption);
 
-      // ✅ 写入 Sheet
       await saveToSheet({
         fid: data.id,
         amount: data.amount,
@@ -172,7 +199,7 @@ for (const id of CHAT_IDS) {
         sent_at: new Date().toISOString()
       });
 
-      console.log('Saved to sheet:', data.id);
+      console.log('Saved:', data.id);
     }
 
     console.log('DONE');
