@@ -54,7 +54,7 @@ ${gamesText}
 🐸 Australia Trusted UFO9 🐸
 💰 Deposit 5sec-15sec ✅
 💰 Withdraw 2min-5min ✅
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━
 🌐 Register ID ➤ <a href="https://ufo9.asia/RFUFO9TLG">CLICK ME</a>`;
 
     const form = new FormData();
