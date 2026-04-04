@@ -5,6 +5,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
 const API_URL = 'https://ufo9.asia/getLiveStat.php';
+const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec';
 const MIN_AMOUNT = 500;
 
 function absAmount(value) {
@@ -12,27 +13,38 @@ function absAmount(value) {
   return Math.abs(parseFloat(cleaned) || 0);
 }
 
+async function getSentIdsFromSheet() {
+  const res = await fetch(SHEET_API);
+  const json = await res.json();
+
+  if (!json.ok) {
+    throw new Error('Failed to read sheet');
+  }
+
+  return new Set((json.data || []).map(x => String(x.fid || '')));
+}
+
+async function appendSentToSheet(row) {
+  const res = await fetch(SHEET_API, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(row)
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    throw new Error('Failed to write sheet');
+  }
+}
+
 async function sendPhoto(imagePath, caption) {
   const fileBuffer = fs.readFileSync(imagePath);
   const form = new FormData();
 
-  const CHAT_IDS = CHAT_ID.split(',');
-
-for (const id of CHAT_IDS) {
-  const form = new FormData();
-  form.append('chat_id', id.trim());
-  form.append('caption', caption);
-  form.append('parse_mode', 'HTML');
-  form.append('disable_web_page_preview', 'true');
-  form.append('photo', new Blob([fs.readFileSync('hotgame.png')]), 'hotgame.png');
-
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: 'POST',
-    body: form
-  });
-
-  console.log(`Sent to ${id}`);
-}
+  form.append('chat_id', CHAT_ID);
   form.append('caption', caption);
   form.append('parse_mode', 'HTML');
   form.append('disable_web_page_preview', 'true');
@@ -62,9 +74,9 @@ for (const id of CHAT_IDS) {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {
-        'accept': '*/*',
+        accept: '*/*',
         'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'referer': 'https://ufo9.asia/'
+        referer: 'https://ufo9.asia/'
       },
       body: 'background=1&mId=879'
     });
@@ -84,6 +96,9 @@ for (const id of CHAT_IDS) {
       return;
     }
 
+    const sentSet = await getSentIdsFromSheet();
+    console.log('Sent IDs from sheet:', sentSet.size);
+
     const checked = withdraws.map(w => {
       const amount = absAmount(w.cash);
       const qualifies = amount >= MIN_AMOUNT;
@@ -100,34 +115,33 @@ for (const id of CHAT_IDS) {
 
     console.log('CHECKED ROWS:', JSON.stringify(checked, null, 2));
 
-    const bigWithdraws = checked.filter(x => x.qualifies);
+    const bigWithdraws = checked.filter(x => x.qualifies && !sentSet.has(x.fid));
     console.log('Qualified rows:', JSON.stringify(bigWithdraws, null, 2));
 
     if (!bigWithdraws.length) {
-      console.log(`No withdraw >= ${MIN_AMOUNT}`);
+      console.log(`No new withdraw >= ${MIN_AMOUNT}`);
       return;
     }
 
-    const w = bigWithdraws[0];
-    console.log('SELECTED TO SEND:', JSON.stringify(w, null, 2));
+    const toSend = bigWithdraws.slice(0, 2);
 
-    const data = {
-      id: w.fid,
-      mobile: w.mobile,
-      provider: (w.site || 'UNKNOWN').toUpperCase(),
-      amount: w.amount,
-      time: new Date().toISOString()
-    };
+    for (const w of toSend) {
+      const data = {
+        id: w.fid,
+        mobile: w.mobile,
+        provider: (w.site || 'UNKNOWN').toUpperCase(),
+        amount: w.amount,
+        time: new Date().toISOString()
+      };
 
-    console.log('Generating image with:', JSON.stringify(data, null, 2));
-    await generateImage(data);
+      console.log('Generating image with:', JSON.stringify(data, null, 2));
+      await generateImage(data);
 
-    console.log('File exists:', fs.existsSync('withdraw.png'));
-    if (!fs.existsSync('withdraw.png')) {
-      throw new Error('withdraw.png not created');
-    }
+      if (!fs.existsSync('withdraw.png')) {
+        throw new Error('withdraw.png not created');
+      }
 
-    const caption = `
+      const caption = `
 <b>💸 WITHDRAWAL ALERT</b>
 
 📱 ${data.mobile}
@@ -137,7 +151,18 @@ for (const id of CHAT_IDS) {
 👉 <a href=" ">CLICK NOW</a >
 `;
 
-    await sendPhoto('withdraw.png', caption);
+      await sendPhoto('withdraw.png', caption);
+
+      await appendSentToSheet({
+        fid: w.fid,
+        amount: w.amount,
+        mobile: w.mobile,
+        provider: w.site,
+        sent_at: new Date().toISOString()
+      });
+
+      console.log('Saved to sheet:', w.fid);
+    }
 
     console.log('DONE');
   } catch (err) {
