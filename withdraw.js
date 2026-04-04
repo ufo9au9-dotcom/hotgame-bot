@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 const generateImage = require('./withdraw-image');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -8,26 +7,9 @@ const CHAT_ID = process.env.CHAT_ID;
 const API_URL = 'https://ufo9.asia/getLiveStat.php';
 const MIN_AMOUNT = 500;
 
-// 👉 注意：GitHub不会长期保存，但先保留结构
-const SENT_FILE = path.join(__dirname, 'sent-withdraw.json');
-
-function loadSentIds() {
-  try {
-    if (!fs.existsSync(SENT_FILE)) return [];
-    const raw = fs.readFileSync(SENT_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function saveSentIds(ids) {
-  fs.writeFileSync(SENT_FILE, JSON.stringify(ids.slice(-1000), null, 2));
-}
-
 function absAmount(value) {
-  return Math.abs(Number(value || 0));
+  const cleaned = String(value ?? '').replace(/,/g, '').trim();
+  return Math.abs(parseFloat(cleaned) || 0);
 }
 
 async function sendPhoto(imagePath, caption) {
@@ -46,7 +28,7 @@ async function sendPhoto(imagePath, caption) {
   });
 
   const json = await res.json();
-  console.log('Telegram result:', json);
+  console.log('Telegram result:', JSON.stringify(json, null, 2));
 
   if (!json.ok) {
     throw new Error('Telegram send failed');
@@ -55,11 +37,16 @@ async function sendPhoto(imagePath, caption) {
 
 (async () => {
   try {
+    if (!BOT_TOKEN || !CHAT_ID) {
+      throw new Error('Missing BOT_TOKEN or CHAT_ID');
+    }
+
     console.log('Fetching live stat...');
 
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {
+        'accept': '*/*',
         'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'referer': 'https://ufo9.asia/'
       },
@@ -73,86 +60,70 @@ async function sendPhoto(imagePath, caption) {
       throw new Error('API status not SUCCESS');
     }
 
-    const withdraws = json?.data?.WITHDRAW || [];
+    const withdraws = Array.isArray(json?.data?.WITHDRAW) ? json.data.WITHDRAW : [];
+    console.log('Withdraw rows total:', withdraws.length);
 
-    console.log(
-      'WITHDRAW LIST:',
-      withdraws.map(w => ({
-        fid: w.fid,
-        mobile: w.mobile,
-        cash: w.cash,
-        site: w.site
-      }))
-    );
-
-    const sentIds = loadSentIds();
-    const sentSet = new Set(sentIds);
-
-    const bigWithdraws = withdraws.filter(w => {
-      const amount = absAmount(w.cash);
-
-      console.log(
-        'CHECK:',
-        w.fid,
-        w.mobile,
-        w.cash,
-        '→',
-        amount,
-        '>=500?',
-        amount >= MIN_AMOUNT
-      );
-
-      return amount >= MIN_AMOUNT && !sentSet.has(String(w.fid));
-    });
-
-    console.log('Qualified:', bigWithdraws.length);
-
-    if (!bigWithdraws.length) {
-      console.log('No new big withdraw');
+    if (!withdraws.length) {
+      console.log('No withdraw rows returned by API.');
       return;
     }
 
-    // 👉 每次最多发2条，避免刷屏
-    const toSend = bigWithdraws.slice(0, 2);
+    const checked = withdraws.map(w => {
+      const amount = absAmount(w.cash);
+      const qualifies = amount >= MIN_AMOUNT;
 
-    for (const w of toSend) {
-      const amount = absAmount(w.cash).toFixed(2);
-
-      const data = {
-        id: String(w.fid || ''),
+      return {
+        fid: String(w.fid || ''),
         mobile: String(w.mobile || ''),
-        provider: String(w.site || '').toUpperCase(),
-        amount: Number(amount),
-        time: new Date().toISOString()
+        cash_raw: String(w.cash || ''),
+        amount,
+        site: String(w.site || ''),
+        qualifies
       };
+    });
 
-      console.log('Generating image for:', data);
+    console.log('CHECKED ROWS:', JSON.stringify(checked, null, 2));
 
-      await generateImage(data);
+    const bigWithdraws = checked.filter(x => x.qualifies);
+    console.log('Qualified rows:', JSON.stringify(bigWithdraws, null, 2));
 
-      if (!fs.existsSync('withdraw.png')) {
-        throw new Error('Image not created');
-      }
+    if (!bigWithdraws.length) {
+      console.log(`No withdraw >= ${MIN_AMOUNT}`);
+      return;
+    }
 
-      const caption = `
+    const w = bigWithdraws[0];
+    console.log('SELECTED TO SEND:', JSON.stringify(w, null, 2));
+
+    const data = {
+      id: w.fid,
+      mobile: w.mobile,
+      provider: (w.site || 'UNKNOWN').toUpperCase(),
+      amount: w.amount,
+      time: new Date().toISOString()
+    };
+
+    console.log('Generating image with:', JSON.stringify(data, null, 2));
+    await generateImage(data);
+
+    console.log('File exists:', fs.existsSync('withdraw.png'));
+    if (!fs.existsSync('withdraw.png')) {
+      throw new Error('withdraw.png not created');
+    }
+
+    const caption = `
 <b>💸 WITHDRAWAL ALERT</b>
 
 📱 ${data.mobile}
 🎰 ${data.provider}
-💰 AUD ${amount}
+💰 AUD ${data.amount.toFixed(2)}
 
 👉 <a href=" ">CLICK NOW</a >
 `;
 
-      await sendPhoto('withdraw.png', caption);
-
-      sentSet.add(String(w.fid));
-    }
-
-    saveSentIds(Array.from(sentSet));
+    await sendPhoto('withdraw.png', caption);
 
     console.log('DONE');
-
   } catch (err) {
     console.error('ERROR:', err.message);
     process.exit(1);
