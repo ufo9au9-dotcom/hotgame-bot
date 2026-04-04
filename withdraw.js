@@ -113,7 +113,7 @@ for (const id of CHAT_IDS) {
   form.append('caption', caption);
   form.append('parse_mode', 'HTML');
   form.append('disable_web_page_preview', 'true');
-  form.append('photo', new Blob([fs.readFileSync('hotgame.png')]), 'hotgame.png');
+  form.append('photo', new Blob([fs.readFileSync('withdraw.png')]), 'withdraw.png');
 
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
     method: 'POST',
