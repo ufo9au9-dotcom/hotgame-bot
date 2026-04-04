@@ -22,21 +22,21 @@ async function generateImage(data) {
   ctx.shadowColor = '#FFD700';
   ctx.shadowBlur = 18;
   ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 58px Arial';
+  ctx.font = 'bold 72px Arial';
   ctx.fillText(
     `AUD ${Math.abs(data.amount).toFixed(2)}`,
     centerX,
-    135
+    110
   );
   ctx.shadowBlur = 0;
 
   // 手机 + provider
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 24px Arial';
+  ctx.font = 'bold 32px Arial';
   ctx.fillText(
     `${maskPhone(data.mobile)}   •   ${data.provider}`,
     centerX,
-    190
+    180
   );
 
   fs.writeFileSync('withdraw.png', canvas.toBuffer('image/png'));
