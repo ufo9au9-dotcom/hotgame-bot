@@ -5,7 +5,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
 const API_URL = 'https://ufo9.asia/getLiveStat.php';
-const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec';
+const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec'; // 👈 放你的 /exec 链接
 const MIN_AMOUNT = 500;
 
 function absAmount(value) {
@@ -13,37 +13,34 @@ function absAmount(value) {
   return Math.abs(parseFloat(cleaned) || 0);
 }
 
-async function getSentIdsFromSheet() {
+// ✅ 读取 Sheet 已发送 ID
+async function getSentIds() {
   const res = await fetch(SHEET_API);
   const json = await res.json();
 
-  if (!json.ok) {
-    throw new Error('Failed to read sheet');
-  }
+  if (!json.ok) throw new Error('Sheet read failed');
 
-  return new Set((json.data || []).map(x => String(x.fid || '')));
+  return new Set((json.data || []).map(x => String(x.fid)));
 }
 
-async function appendSentToSheet(row) {
+// ✅ 写入 Sheet
+async function saveToSheet(row) {
   const res = await fetch(SHEET_API, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(row)
   });
 
   const json = await res.json();
 
-  if (!json.ok) {
-    throw new Error('Failed to write sheet');
-  }
+  if (!json.ok) throw new Error('Sheet write failed');
 }
 
+// ✅ 发 Telegram 图片
 async function sendPhoto(imagePath, caption) {
   const fileBuffer = fs.readFileSync(imagePath);
-  const form = new FormData();
 
+  const form = new FormData();
   form.append('chat_id', CHAT_ID);
   form.append('caption', caption);
   form.append('parse_mode', 'HTML');
@@ -56,27 +53,20 @@ async function sendPhoto(imagePath, caption) {
   });
 
   const json = await res.json();
-  console.log('Telegram result:', JSON.stringify(json, null, 2));
+  console.log('Telegram:', JSON.stringify(json, null, 2));
 
-  if (!json.ok) {
-    throw new Error('Telegram send failed');
-  }
+  if (!json.ok) throw new Error('Telegram send failed');
 }
 
 (async () => {
   try {
-    if (!BOT_TOKEN || !CHAT_ID) {
-      throw new Error('Missing BOT_TOKEN or CHAT_ID');
-    }
-
     console.log('Fetching live stat...');
 
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {
-        accept: '*/*',
         'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        referer: 'https://ufo9.asia/'
+        'referer': 'https://ufo9.asia/'
       },
       body: 'background=1&mId=879'
     });
@@ -85,60 +75,64 @@ async function sendPhoto(imagePath, caption) {
     console.log('FULL API:', JSON.stringify(json, null, 2));
 
     if (json?.status !== 'SUCCESS') {
-      throw new Error('API status not SUCCESS');
+      throw new Error('API not success');
     }
 
-    const withdraws = Array.isArray(json?.data?.WITHDRAW) ? json.data.WITHDRAW : [];
-    console.log('Withdraw rows total:', withdraws.length);
+    const withdraws = json?.data?.WITHDRAW || [];
+    console.log('Total withdraw:', withdraws.length);
 
     if (!withdraws.length) {
-      console.log('No withdraw rows returned by API.');
+      console.log('No withdraw data');
       return;
     }
 
-    const sentSet = await getSentIdsFromSheet();
-    console.log('Sent IDs from sheet:', sentSet.size);
+    // ✅ 已发记录
+    const sentSet = await getSentIds();
+    console.log('Already sent count:', sentSet.size);
 
+    // ✅ 转换 + 判断
     const checked = withdraws.map(w => {
       const amount = absAmount(w.cash);
-      const qualifies = amount >= MIN_AMOUNT;
 
       return {
-        fid: String(w.fid || ''),
+        id: String(w.id || ''), // 🔥 关键改这里
         mobile: String(w.mobile || ''),
-        cash_raw: String(w.cash || ''),
         amount,
         site: String(w.site || ''),
-        qualifies
+        qualifies: amount >= MIN_AMOUNT
       };
     });
 
-    console.log('CHECKED ROWS:', JSON.stringify(checked, null, 2));
+    console.log('CHECKED:', JSON.stringify(checked, null, 2));
 
-    const bigWithdraws = checked.filter(x => x.qualifies && !sentSet.has(x.fid));
-    console.log('Qualified rows:', JSON.stringify(bigWithdraws, null, 2));
+    // ✅ 筛选
+    const toSend = checked.filter(x => x.qualifies && !sentSet.has(x.id));
 
-    if (!bigWithdraws.length) {
-      console.log(`No new withdraw >= ${MIN_AMOUNT}`);
+    console.log('TO SEND:', JSON.stringify(toSend, null, 2));
+
+    if (!toSend.length) {
+      console.log('No new big withdraw');
       return;
     }
 
-    const toSend = bigWithdraws.slice(0, 2);
+    // 👉 最多发2条
+    const finalList = toSend.slice(0, 2);
 
-    for (const w of toSend) {
+    for (const w of finalList) {
       const data = {
-        id: w.fid,
+        id: w.id,
         mobile: w.mobile,
-        provider: (w.site || 'UNKNOWN').toUpperCase(),
+        provider: w.site.toUpperCase(),
         amount: w.amount,
         time: new Date().toISOString()
       };
 
-      console.log('Generating image with:', JSON.stringify(data, null, 2));
+      console.log('Generating image:', data);
+
       await generateImage(data);
 
       if (!fs.existsSync('withdraw.png')) {
-        throw new Error('withdraw.png not created');
+        throw new Error('Image not created');
       }
 
       const caption = `
@@ -153,15 +147,16 @@ async function sendPhoto(imagePath, caption) {
 
       await sendPhoto('withdraw.png', caption);
 
-      await appendSentToSheet({
-        fid: w.fid,
-        amount: w.amount,
-        mobile: w.mobile,
-        provider: w.site,
+      // ✅ 写入 Sheet
+      await saveToSheet({
+        fid: data.id,
+        amount: data.amount,
+        mobile: data.mobile,
+        provider: data.provider,
         sent_at: new Date().toISOString()
       });
 
-      console.log('Saved to sheet:', w.fid);
+      console.log('Saved to sheet:', data.id);
     }
 
     console.log('DONE');
