@@ -1,6 +1,8 @@
-name: Withdraw Alert Test
+name: Withdraw Alert
 
 on:
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -24,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run withdraw test
+      - name: Run withdraw bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
