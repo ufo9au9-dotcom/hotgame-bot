@@ -5,16 +5,14 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
 const API_URL = 'https://ufo9.asia/getLiveStat.php';
-const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec'; // 👈 改这里
+const SHEET_API = 'https://script.google.com/macros/s/AKfycbwfJyFhGIuig_q2mEd8kxiW63wD5X8qYVr45gQDj98n3CNZLNpxKsL73v2hSONRdvbJ/exec'; // 改成你的 /exec 链接
 const MIN_AMOUNT = 500;
 
-// ===== 金额处理 =====
 function absAmount(value) {
   const cleaned = String(value ?? '').replace(/,/g, '').trim();
   return Math.abs(parseFloat(cleaned) || 0);
 }
 
-// ===== Caption分级系统 =====
 function getCaption(amount, provider, mobile) {
   if (amount >= 5000) {
     return `🎉 <b>CONGRATULATIONS!</b>
@@ -24,10 +22,10 @@ function getCaption(amount, provider, mobile) {
 🎰 ${provider}
 📱 ${mobile}
 ━━━━━━━━━━━━━━
-⚡ REAL WIN • REAL PAYOUT  
+⚡ REAL WIN • REAL PAYOUT
 🐸 Australia Trusted Platform
-🪙 Deposit 5–15s  
-🪙 Withdraw 2–5min  
+🪙 Deposit 5–15s
+🪙 Withdraw 2–5min
 ━━━━━━━━━━━━━━
 💎 <a href="https://ufo9.asia/RFUFO9TLG">START WINNING NOW</a >`;
   }
@@ -41,8 +39,8 @@ function getCaption(amount, provider, mobile) {
 📱 ${mobile}
 ━━━━━━━━━━━━━━
 ⚡ Instant Withdraw • AU Trusted
-🪙 Deposit 5–15s  
-🪙 Withdraw 2–5min  
+🪙 Deposit 5–15s
+🪙 Withdraw 2–5min
 ━━━━━━━━━━━━━━
 🔥 <a href="https://ufo9.asia/RFUFO9TLG">JOIN NOW & WIN BIG</a >`;
   }
@@ -55,10 +53,10 @@ function getCaption(amount, provider, mobile) {
 🎰 <b>${provider}</b>
 📱 ${mobile}
 ━━━━━━━━━━━━━━
-⚡ FAST PAYOUT SYSTEM  
+⚡ FAST PAYOUT SYSTEM
 🐸 Trusted by AU Players
-🪙 Deposit 5–15s ✅  
-🪙 Withdraw 2–5min ✅  
+🪙 Deposit 5–15s ✅
+🪙 Withdraw 2–5min ✅
 ━━━━━━━━━━━━━━
 🔥 <a href="https://ufo9.asia/RFUFO9TLG">CLICK NOW & WIN</a >`;
   }
@@ -71,23 +69,21 @@ function getCaption(amount, provider, mobile) {
 📱 ${mobile}
 ━━━━━━━━━━━━━━
 ⚡ Fast & Secure Payout
-🪙 Deposit 5–15s  
-🪙 Withdraw 2–5min  
+🪙 Deposit 5–15s
+🪙 Withdraw 2–5min
 ━━━━━━━━━━━━━━
 🌐 <a href="https://ufo9.asia/RFUFO9TLG">PLAY NOW</a >`;
 }
 
-// ===== 读取Sheet =====
 async function getSentIds() {
   const res = await fetch(SHEET_API);
   const json = await res.json();
 
   if (!json.ok) throw new Error('Sheet read failed');
 
-  return new Set((json.data || []).map(x => String(x.fid)));
+  return new Set((json.data || []).map(x => String(x.fid || '')));
 }
 
-// ===== 写入Sheet =====
 async function saveToSheet(row) {
   const res = await fetch(SHEET_API, {
     method: 'POST',
@@ -100,47 +96,48 @@ async function saveToSheet(row) {
   if (!json.ok) throw new Error('Sheet write failed');
 }
 
-// ===== 发Telegram =====
 async function sendPhoto(imagePath, caption) {
+  const CHAT_IDS = String(CHAT_ID || '')
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  if (!CHAT_IDS.length) {
+    throw new Error('No valid chat_id found');
+  }
+
   const fileBuffer = fs.readFileSync(imagePath);
 
-  const form = new FormData();
-  const CHAT_IDS = CHAT_ID.split(',');
+  for (const id of CHAT_IDS) {
+    const form = new FormData();
+    form.append('chat_id', id);
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+    form.append('disable_web_page_preview', 'true');
+    form.append('photo', new Blob([fileBuffer], { type: 'image/png' }), 'withdraw.png');
 
-for (const id of CHAT_IDS) {
-  const form = new FormData();
-  form.append('chat_id', id.trim());
-  form.append('caption', caption);
-  form.append('parse_mode', 'HTML');
-  form.append('disable_web_page_preview', 'true');
-  form.append('photo', new Blob([fs.readFileSync('withdraw.png')]), 'withdraw.png');
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      method: 'POST',
+      body: form
+    });
 
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: 'POST',
-    body: form
-  });
+    const json = await res.json();
+    console.log('Telegram:', JSON.stringify(json, null, 2));
 
-  console.log(`Sent to ${id}`);
-}
-  form.append('caption', caption);
-  form.append('parse_mode', 'HTML');
-  form.append('disable_web_page_preview', 'true');
-  form.append('photo', new Blob([fileBuffer]), 'withdraw.png');
+    if (!json.ok) {
+      throw new Error(`Telegram send failed for ${id}: ${JSON.stringify(json)}`);
+    }
 
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: 'POST',
-    body: form
-  });
-
-  const json = await res.json();
-  console.log('Telegram:', JSON.stringify(json, null, 2));
-
-  if (!json.ok) throw new Error('Telegram send failed');
+    console.log(`Sent to ${id}`);
+  }
 }
 
-// ===== 主流程 =====
 (async () => {
   try {
+    if (!BOT_TOKEN || !CHAT_ID) {
+      throw new Error('Missing BOT_TOKEN or CHAT_ID');
+    }
+
     console.log('Fetching live stat...');
 
     const res = await fetch(API_URL, {
@@ -169,9 +166,8 @@ for (const id of CHAT_IDS) {
 
     const checked = withdraws.map(w => {
       const amount = absAmount(w.cash);
-
       return {
-        id: String(w.id || ''), // 🔥 用 id
+        id: String(w.id || ''),
         mobile: String(w.mobile || ''),
         amount,
         site: String(w.site || ''),
@@ -179,7 +175,7 @@ for (const id of CHAT_IDS) {
       };
     });
 
-    const toSend = checked.filter(x => x.qualifies && !sentSet.has(x.id));
+    const toSend = checked.filter(x => x.qualifies && x.id && !sentSet.has(x.id));
 
     if (!toSend.length) {
       console.log('No new big withdraw');
