@@ -4,63 +4,122 @@ const fs = require('fs');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
-// 🔥 UFO 页面
+// 🔥 改成你的 UFO 页面
 const URL = 'https://ufo9.asia/hotgame';
 
 (async () => {
   try {
+    if (!BOT_TOKEN || !CHAT_ID) {
+      throw new Error('Missing BOT_TOKEN or CHAT_ID');
+    }
+
+    console.log('Opening browser...');
+
     const browser = await chromium.launch({ headless: true });
 
     const context = await browser.newContext({
       viewport: { width: 1600, height: 1200 },
+      deviceScaleFactor: 1.25,
       timezoneId: 'Australia/Sydney'
     });
 
     const page = await context.newPage();
 
-    await page.goto(URL, { waitUntil: 'domcontentloaded' });
+    console.log('Loading page...');
+    await page.goto(URL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120000
+    });
 
-    await page.waitForSelector('#steam-hot-wrap');
+    // 等页面加载
+    await page.waitForSelector('#steam-hot-wrap', { timeout: 120000 });
     await page.waitForTimeout(8000);
 
-    // ✅ 抓游戏
+    // 等图片加载
+    await page.evaluate(async () => {
+      const imgs = Array.from(document.querySelectorAll('#steam-hot-wrap img'));
+      await Promise.all(
+        imgs.map(img => {
+          if (img.complete && img.naturalWidth > 0) return;
+          return new Promise(resolve => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 10000);
+          });
+        })
+      );
+    });
+
+    await page.waitForTimeout(2000);
+
+    // 🔥 抓 provider + 游戏
     const pageData = await page.evaluate(() => {
       const provider =
-        document.querySelector('#steamHotProviderLogo')?.alt?.replace(' logo','') ||
+        document.querySelector('#steamHotProviderLogo')?.alt?.replace(/\s*logo/i, '').trim() ||
+        document.querySelector('#dailyHotTitle')?.textContent?.split('•')[0]?.trim() ||
         'HOT GAME';
 
       const games = Array.from(document.querySelectorAll('.steam-hot-name'))
         .map(el => el.textContent.trim())
+        .filter(Boolean)
         .slice(0, 4);
 
       return { provider, games };
     });
 
+    console.log('Taking screenshot...');
     const card = await page.$('#steam-hot-wrap');
+
+    if (!card) {
+      throw new Error('Cannot find #steam-hot-wrap');
+    }
+
     await card.screenshot({ path: 'hotgame.png' });
 
     await browser.close();
 
-    const gamesText = pageData.games.map(g => `📈 ${g}`).join('\n');
+    if (!fs.existsSync('hotgame.png')) {
+      throw new Error('Screenshot NOT created');
+    }
 
-    // 🔥 UFO 风格 caption（像你图）
-    const caption =
-`‼️ HOT GAMES TIPS ‼️
-📢 ${pageData.provider}
+    // 🔥 游戏列表
+    const gamesText = pageData.games
+      .map(g => `📈 ${g}`)
+      .join('\n');
 
+    // 🔥 CTA随机（更自然）
+    const ctas = [
+      'CLICK NOW',
+      'PLAY NOW',
+      'JOIN & WIN NOW'
+    ];
+
+    const cta = ctas[Math.floor(Math.random() * ctas.length)];
+
+    // 🔥 高级版 Caption（含 provider）
+    const caption = `
+<b>🎰 UFO9 • HOT GAME TIPS 🎰</b>
+📢 <b>${pageData.provider.toUpperCase()} TODAY PICKS</b>
+━━━━━━━━━━━━━━
 ${gamesText}
 
-• Fast Payment System •
-🐸 Australia Trusted UFO9 🐸
-💰 Deposit 5sec-15sec ✅
-💰 Withdraw 2min-5min ✅
-━━━━━━━━━━━━━━━━━━
-🌐 Register ID ➤ <a href="https://ufo9.asia/RFUFO9TLG">CLICK ME</a>`;
+💸 <b>Fast Payment System</b>  
+🐸 Australia Trusted UFO9  
+⚡ Deposit 5s–15s ✅  
+⚡ Withdraw 2–5 min ✅  
+━━━━━━━━━━━━━━
+🔥 <b>Ready to Win Big?</b>  
+👉 <b><a href="https://ufo9.asia/RFUFO9TLG">${cta}</a ></b>
+🎯 <i>Your Next Big Win Starts Here</i>
+`;
+
+    console.log('Sending to Telegram...');
 
     const form = new FormData();
     form.append('chat_id', CHAT_ID);
     form.append('caption', caption);
-    form.append('parse_mode', 'HTML'); // ⭐ 必须
+    form.append('parse_mode', 'HTML'); // ⭐ 关键
+    form.append('disable_web_page_preview', 'true'); // ⭐ 去掉丑preview
     form.append('photo', new Blob([fs.readFileSync('hotgame.png')]), 'hotgame.png');
 
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
@@ -70,12 +129,16 @@ ${gamesText}
 
     const json = await res.json();
 
-    if (!json.ok) throw new Error(JSON.stringify(json));
+    console.log('Telegram response:', json);
+
+    if (!json.ok) {
+      throw new Error(JSON.stringify(json));
+    }
 
     console.log('✅ UFO SENT SUCCESS');
 
   } catch (err) {
-    console.error(err);
+    console.error('❌ ERROR:', err.message);
     process.exit(1);
   }
 })();
