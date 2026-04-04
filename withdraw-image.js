@@ -22,11 +22,11 @@ async function generateImage(data) {
   ctx.shadowColor = '#FFD700';
   ctx.shadowBlur = 18;
   ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 72px Arial';
+  ctx.font = 'bold 80px Arial';
   ctx.fillText(
     `AUD ${Math.abs(data.amount).toFixed(2)}`,
     centerX,
-    110
+    120
   );
   ctx.shadowBlur = 0;
 
