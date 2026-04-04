@@ -5,13 +5,8 @@ const generateImage = require('./withdraw-image');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
-// 改成你的 live transaction API
-const API_URL = 'https://ufo9au.com/getLiveStat.php';
-
-// 最低提款金额
+const API_URL = 'https://ufo9.asia/getLiveStat.php';
 const MIN_AMOUNT = 500;
-
-// 记录已发送 fid，避免重复
 const SENT_FILE = path.join(__dirname, 'sent-withdraw.json');
 
 function loadSentIds() {
@@ -65,22 +60,31 @@ async function sendPhotoToTelegram(imagePath, caption) {
     }
 
     console.log('Fetching live stat...');
+
     const res = await fetch(API_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: {
-        'accept': '*/*'
-      }
+        'accept': '*/*',
+        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'referer': 'https://ufo9.asia/'
+      },
+      body: 'background=1&mId=879'
     });
 
     const json = await res.json();
-    console.log("FULL API:", JSON.stringify(json, null, 2));
-    console.log('API status:', json?.status);
+    console.log('FULL API:', JSON.stringify(json, null, 2));
 
-    if (json?.status !== 'SUCCESS' || !json?.data?.WITHDRAW) {
-      throw new Error('Invalid API response');
+    if (json?.status !== 'SUCCESS') {
+      throw new Error('API status not SUCCESS');
     }
 
-    const withdraws = Array.isArray(json.data.WITHDRAW) ? json.data.WITHDRAW : [];
+    const data = json?.data;
+    if (!data || Array.isArray(data)) {
+      console.log('No valid withdraw structure returned, exit.');
+      return;
+    }
+
+    const withdraws = Array.isArray(data.WITHDRAW) ? data.WITHDRAW : [];
     console.log('Withdraw rows:', withdraws.length);
 
     const sentIds = loadSentIds();
@@ -101,7 +105,7 @@ async function sendPhotoToTelegram(imagePath, caption) {
     for (const w of bigWithdraws) {
       const amount = absAmount(w.cash).toFixed(2);
 
-      const data = {
+      const dataForImage = {
         id: String(w.fid || ''),
         mobile: String(w.mobile || 'UNKNOWN'),
         provider: String(w.site || 'UNKNOWN').toUpperCase(),
@@ -109,9 +113,9 @@ async function sendPhotoToTelegram(imagePath, caption) {
         time: new Date().toISOString()
       };
 
-      console.log('Generating image for:', data);
+      console.log('Generating image for:', dataForImage);
 
-      await generateImage(data);
+      await generateImage(dataForImage);
 
       if (!fs.existsSync('withdraw.png')) {
         throw new Error('withdraw.png was not created');
@@ -120,8 +124,8 @@ async function sendPhotoToTelegram(imagePath, caption) {
       const caption = `
 <b>💸 WITHDRAWAL ALERT</b>
 
-📱 ${data.mobile}
-🎰 ${data.provider}
+📱 ${dataForImage.mobile}
+🎰 ${dataForImage.provider}
 💰 AUD ${amount}
 
 👉 <a href=" ">CLICK NOW</a >
