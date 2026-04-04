@@ -18,25 +18,25 @@ async function generateImage(data) {
   const centerX = base.width / 2;
   ctx.textAlign = 'center';
 
-  // ===== 金额 =====
+  // 金额
   ctx.shadowColor = '#FFD700';
-  ctx.shadowBlur = 25;
+  ctx.shadowBlur = 18;
   ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 72px Arial';
+  ctx.font = 'bold 58px Arial';
   ctx.fillText(
     `AUD ${Math.abs(data.amount).toFixed(2)}`,
     centerX,
-    170
+    135
   );
   ctx.shadowBlur = 0;
 
-  // ===== 手机 + provider =====
+  // 手机 + provider
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 78px Arial';
+  ctx.font = 'bold 24px Arial';
   ctx.fillText(
     `${maskPhone(data.mobile)}   •   ${data.provider}`,
     centerX,
-    170
+    190
   );
 
   fs.writeFileSync('withdraw.png', canvas.toBuffer('image/png'));
