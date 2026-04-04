@@ -73,6 +73,7 @@ async function sendPhotoToTelegram(imagePath, caption) {
     });
 
     const json = await res.json();
+    console.log("FULL API:", JSON.stringify(json, null, 2));
     console.log('API status:', json?.status);
 
     if (json?.status !== 'SUCCESS' || !json?.data?.WITHDRAW) {
