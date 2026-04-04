@@ -26,13 +26,13 @@ async function generateImage(data) {
   ctx.fillText(
     `AUD ${Math.abs(data.amount).toFixed(2)}`,
     centerX,
-    110
+    170
   );
   ctx.shadowBlur = 0;
 
   // ===== 手机 + provider =====
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 32px Arial';
+  ctx.font = 'bold 78px Arial';
   ctx.fillText(
     `${maskPhone(data.mobile)}   •   ${data.provider}`,
     centerX,
