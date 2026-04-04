@@ -45,7 +45,7 @@ const URL = 'https://ufo9.asia/hotgame';
 
     // 🔥 UFO 风格 caption（像你图）
     const caption =
-‼️ HOT GAMES TIPS ‼️
+`‼️ HOT GAMES TIPS ‼️
 
 📢 ${pageData.provider}
 
@@ -57,7 +57,7 @@ ${gamesText}
 💰 Withdraw 2min-5min ✅
 ━━━━━━━━━━━━━━
 
-🌐 Register ID ➤ <a href="https://ufo9.asia/RFUFO9TLG">CLICK ME</a >
+🌐 Register ID ➤ <a href="https://ufo9.asia/RFUFO9TLG">CLICK ME</a>`;
 
     const form = new FormData();
     form.append('chat_id', CHAT_ID);
