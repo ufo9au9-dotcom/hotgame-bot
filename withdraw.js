@@ -1,147 +1,66 @@
+const { createCanvas, loadImage } = require('canvas');
 const fs = require('fs');
-const path = require('path');
-const generateImage = require('./withdraw-image');
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const CHAT_ID = process.env.CHAT_ID;
+const TEMPLATE = 'template.png'; // 👈 用你刚刚那张链接下载后命名
 
-const API_URL = 'https://ufo9.asia/getLiveStat.php';
-const MIN_AMOUNT = 500;
-const SENT_FILE = path.join(__dirname, 'sent-withdraw.json');
-
-function loadSentIds() {
-  try {
-    if (!fs.existsSync(SENT_FILE)) return [];
-    const raw = fs.readFileSync(SENT_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Failed to load sent file:', e.message);
-    return [];
-  }
-}
-
-function saveSentIds(ids) {
-  fs.writeFileSync(SENT_FILE, JSON.stringify(ids.slice(-1000), null, 2), 'utf8');
-}
-
-function absAmount(value) {
-  return Math.abs(Number(value || 0));
-}
-
-async function sendPhotoToTelegram(imagePath, caption) {
-  const fileBuffer = fs.readFileSync(imagePath);
-  const blob = new Blob([fileBuffer], { type: 'image/png' });
-  const form = new FormData();
-
-  form.append('chat_id', CHAT_ID);
-  form.append('caption', caption);
-  form.append('parse_mode', 'HTML');
-  form.append('disable_web_page_preview', 'true');
-  form.append('photo', blob, 'withdraw.png');
-
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: 'POST',
-    body: form
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString('en-AU', {
+    timeZone: 'Australia/Sydney',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
   });
-
-  const json = await res.json();
-  console.log('Telegram response:', json);
-
-  if (!json.ok) {
-    throw new Error('Telegram send failed: ' + JSON.stringify(json));
-  }
 }
 
-(async () => {
-  try {
-    if (!BOT_TOKEN || !CHAT_ID) {
-      throw new Error('Missing BOT_TOKEN or CHAT_ID');
-    }
+function maskPhone(phone) {
+  return phone.replace(/(\d{2})\d+(\d{3})/, '$1******$2');
+}
 
-    console.log('Fetching live stat...');
+async function generateImage(data) {
+  const base = await loadImage(TEMPLATE);
 
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'accept': '*/*',
-        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'referer': 'https://ufo9.asia/'
-      },
-      body: 'background=1&mId=879'
-    });
+  const canvas = createCanvas(base.width, base.height);
+  const ctx = canvas.getContext('2d');
 
-    const json = await res.json();
-    console.log('FULL API:', JSON.stringify(json, null, 2));
+  // 背景
+  ctx.drawImage(base, 0, 0, base.width, base.height);
 
-    if (json?.status !== 'SUCCESS') {
-      throw new Error('API status not SUCCESS');
-    }
+  const centerX = base.width / 2;
 
-    const data = json?.data;
-    if (!data || Array.isArray(data)) {
-      console.log('No valid withdraw structure returned, exit.');
-      return;
-    }
+  // ===== 金额 =====
+  ctx.shadowColor = '#FFD700';
+  ctx.shadowBlur = 25;
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 72px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(
+    `AUD ${Math.abs(data.amount).toFixed(2)}`,
+    centerX,
+    110
+  );
+  ctx.shadowBlur = 0;
 
-    const withdraws = Array.isArray(data.WITHDRAW) ? data.WITHDRAW : [];
-    console.log('Withdraw rows:', withdraws.length);
+  // ===== 手机 + provider =====
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 32px Arial';
+  ctx.fillText(
+    `${maskPhone(data.mobile)}   •   ${data.provider}`,
+    centerX,
+    160
+  );
 
-    const sentIds = loadSentIds();
-    const sentSet = new Set(sentIds);
+  // ===== 时间 =====
+  ctx.font = '28px Arial';
+  ctx.fillText(
+    formatTime(data.time),
+    centerX,
+    200
+  );
 
-    const bigWithdraws = withdraws.filter(w => {
-      const amount = absAmount(w.cash);
-      return amount >= MIN_AMOUNT && !sentSet.has(String(w.fid));
-    });
+  // 输出
+  fs.writeFileSync('withdraw.png', canvas.toBuffer('image/png'));
+}
 
-    console.log('Qualified withdraw rows:', bigWithdraws.length);
-
-    if (!bigWithdraws.length) {
-      console.log('No new big withdraws, exit.');
-      return;
-    }
-
-    for (const w of bigWithdraws) {
-      const amount = absAmount(w.cash).toFixed(2);
-
-      const dataForImage = {
-        id: String(w.fid || ''),
-        mobile: String(w.mobile || 'UNKNOWN'),
-        provider: String(w.site || 'UNKNOWN').toUpperCase(),
-        amount: Number(amount),
-        time: new Date().toISOString()
-      };
-
-      console.log('Generating image for:', dataForImage);
-
-      await generateImage(dataForImage);
-
-      if (!fs.existsSync('withdraw.png')) {
-        throw new Error('withdraw.png was not created');
-      }
-
-      const caption = `
-<b>💸 WITHDRAWAL ALERT</b>
-
-📱 ${dataForImage.mobile}
-🎰 ${dataForImage.provider}
-💰 AUD ${amount}
-
-👉 <a href=" ">CLICK NOW</a >
-`;
-
-      await sendPhotoToTelegram('withdraw.png', caption);
-
-      sentSet.add(String(w.fid));
-      console.log(`Sent fid ${w.fid}`);
-    }
-
-    saveSentIds(Array.from(sentSet));
-    console.log('✅ Withdraw bot finished successfully');
-
-  } catch (err) {
-    console.error('❌ ERROR:', err.message);
-    process.exit(1);
-  }
-})();
+module.exports = generateImage;
