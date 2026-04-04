@@ -1,12 +1,10 @@
-name: Withdraw Alert
+name: Withdraw Alert Test
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
-  run-bot:
+  run-withdraw:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,10 +14,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+
+      - name: Install system packages for canvas
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev librsvg2-dev
 
       - name: Install dependencies
         run: npm install
 
-      - name: Run withdraw bot
+      - name: Run withdraw test
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: node withdraw.js
