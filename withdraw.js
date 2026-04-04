@@ -105,7 +105,23 @@ async function sendPhoto(imagePath, caption) {
   const fileBuffer = fs.readFileSync(imagePath);
 
   const form = new FormData();
-  form.append('chat_id', CHAT_ID);
+  const CHAT_IDS = CHAT_ID.split(',');
+
+for (const id of CHAT_IDS) {
+  const form = new FormData();
+  form.append('chat_id', id.trim());
+  form.append('caption', caption);
+  form.append('parse_mode', 'HTML');
+  form.append('disable_web_page_preview', 'true');
+  form.append('photo', new Blob([fs.readFileSync('hotgame.png')]), 'hotgame.png');
+
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+    method: 'POST',
+    body: form
+  });
+
+  console.log(`Sent to ${id}`);
+}
   form.append('caption', caption);
   form.append('parse_mode', 'HTML');
   form.append('disable_web_page_preview', 'true');
