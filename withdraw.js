@@ -5,10 +5,16 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 
 const TX_ID = String(process.env.TX_ID || '');
-const TX_AMOUNT = Number(process.env.TX_AMOUNT || 0);
-const TX_MOBILE = String(process.env.TX_MOBILE || '');
-const TX_PROVIDER = String(process.env.TX_PROVIDER || '');
-const TX_TIME = String(process.env.TX_TIME || new Date().toISOString());
+const TX_AMOUNT = Math.abs(Number(process.env.TX_AMOUNT || 0));
+const TX_TIME = String(process.env.TX_TIME || '');
+
+const API_URL = 'https://ufo9.asia/getLiveStat.php';
+const MIN_AMOUNT = 500;
+
+function absAmount(value) {
+  const cleaned = String(value ?? '').replace(/,/g, '').trim();
+  return Math.abs(parseFloat(cleaned) || 0);
+}
 
 function getCaption(amount, provider, mobile) {
   if (amount >= 5000) {
@@ -98,6 +104,7 @@ async function sendPhoto(imagePath, caption) {
     });
 
     const json = await res.json();
+
     if (!json.ok) {
       throw new Error(`Telegram send failed for ${id}: ${JSON.stringify(json)}`);
     }
@@ -106,21 +113,80 @@ async function sendPhoto(imagePath, caption) {
   }
 }
 
+async function fetchLiveWithdraws() {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'referer': 'https://ufo9.asia/'
+    },
+    body: 'background=1&mId=879'
+  });
+
+  const json = await res.json();
+
+  if (json?.status !== 'SUCCESS') {
+    throw new Error('Live TX API not success');
+  }
+
+  return Array.isArray(json?.data?.WITHDRAW) ? json.data.WITHDRAW : [];
+}
+
+function findMatchingWithdraw(withdraws, targetAmount) {
+  const normalized = withdraws.map(w => ({
+    id: String(w.id || ''),
+    mobile: String(w.mobile || ''),
+    provider: String(w.site || '').toUpperCase(),
+    amount: absAmount(w.cash)
+  }));
+
+  console.log('LIVE WITHDRAW NORMALIZED:', JSON.stringify(normalized, null, 2));
+
+  return normalized.find(w => w.amount === targetAmount) || null;
+}
+
 (async () => {
   try {
     if (!BOT_TOKEN || !CHAT_ID) {
       throw new Error('Missing BOT_TOKEN or CHAT_ID');
     }
 
-    if (!TX_ID || !TX_AMOUNT || !TX_MOBILE || !TX_PROVIDER) {
+    if (!TX_ID || !TX_AMOUNT || !TX_TIME) {
       throw new Error('Missing workflow input');
     }
 
+    if (TX_AMOUNT < MIN_AMOUNT) {
+      console.log(`Amount below ${MIN_AMOUNT}, exit`);
+      return;
+    }
+
+    console.log('Triggered by webhook:', {
+      TX_ID,
+      TX_AMOUNT,
+      TX_TIME
+    });
+
+    const withdraws = await fetchLiveWithdraws();
+
+    if (!withdraws.length) {
+      console.log('No live withdraw data, exit');
+      return;
+    }
+
+    const matched = findMatchingWithdraw(withdraws, TX_AMOUNT);
+
+    if (!matched) {
+      console.log('No matching live tx found, do not send');
+      return;
+    }
+
+    console.log('MATCHED LIVE TX:', matched);
+
     const data = {
-      id: TX_ID,
-      mobile: TX_MOBILE,
-      provider: TX_PROVIDER.toUpperCase(),
-      amount: TX_AMOUNT,
+      id: matched.id || TX_ID,
+      mobile: matched.mobile,
+      provider: matched.provider,
+      amount: matched.amount,
       time: TX_TIME
     };
 
