@@ -1,9 +1,23 @@
 name: Withdraw Alert
 
 on:
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
+    inputs:
+      tx_id:
+        required: true
+        type: string
+      amount:
+        required: true
+        type: string
+      mobile:
+        required: true
+        type: string
+      provider:
+        required: true
+        type: string
+      time:
+        required: false
+        type: string
 
 jobs:
   run-withdraw:
@@ -30,4 +44,9 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          TX_ID: ${{ github.event.inputs.tx_id }}
+          TX_AMOUNT: ${{ github.event.inputs.amount }}
+          TX_MOBILE: ${{ github.event.inputs.mobile }}
+          TX_PROVIDER: ${{ github.event.inputs.provider }}
+          TX_TIME: ${{ github.event.inputs.time }}
         run: node withdraw.js
