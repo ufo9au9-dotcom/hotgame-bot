@@ -9,14 +9,8 @@ on:
       amount:
         required: true
         type: string
-      mobile:
-        required: true
-        type: string
-      provider:
-        required: true
-        type: string
       time:
-        required: false
+        required: true
         type: string
 
 jobs:
@@ -46,7 +40,5 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           TX_ID: ${{ github.event.inputs.tx_id }}
           TX_AMOUNT: ${{ github.event.inputs.amount }}
-          TX_MOBILE: ${{ github.event.inputs.mobile }}
-          TX_PROVIDER: ${{ github.event.inputs.provider }}
           TX_TIME: ${{ github.event.inputs.time }}
         run: node withdraw.js
