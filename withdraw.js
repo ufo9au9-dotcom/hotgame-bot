@@ -9,16 +9,17 @@ const TX_AMOUNT = Math.abs(Number(process.env.TX_AMOUNT || 0));
 const TX_TIME = String(process.env.TX_TIME || '');
 
 const API_URL = 'https://ufo9.asia/getLiveStat.php';
-const MIN_AMOUNT = 500;
+// 1. 修改为 5000，低于 5000 直接拦截退出
+const MIN_AMOUNT = 5000;
 
 function absAmount(value) {
   const cleaned = String(value ?? '').replace(/,/g, '').trim();
   return Math.abs(parseFloat(cleaned) || 0);
 }
 
+// 2. 简化文案函数，只保留 5000+ 的大奖通知
 function getCaption(amount, provider, mobile) {
-  if (amount >= 5000) {
-    return `🎉 <b>CONGRATULATIONS!</b>
+  return `🎉 <b>CONGRATULATIONS!</b>
 ━━━━━━━━━━━━━━
 👑 <b>JACKPOT PAYOUT CONFIRMED</b>
 💰 <b>AUD ${amount.toFixed(2)}</b>
@@ -31,51 +32,6 @@ function getCaption(amount, provider, mobile) {
 🪙 Withdraw 2–5min
 ━━━━━━━━━━━━━━
 💎 <a href="https://ufo9.asia/RFUFO9TLG">START WINNING NOW</a >`;
-  }
-
-  if (amount >= 2000) {
-    return `🎉 <b>CONGRATULATIONS!</b>
-━━━━━━━━━━━━━━
-🚨 <b>MEGA WIN JUST PAID</b>
-💰 <b>AUD ${amount.toFixed(2)}</b>
-🎰 ${provider}
-📱 ${mobile}
-━━━━━━━━━━━━━━
-⚡ Instant Withdraw • AU Trusted
-🪙 Deposit 5–15s
-🪙 Withdraw 2–5min
-━━━━━━━━━━━━━━
-🔥 <a href="https://ufo9.asia/RFUFO9TLG">JOIN NOW & WIN BIG</a >`;
-  }
-
-  if (amount >= 1000) {
-    return `🎉 <b>CONGRATULATIONS!</b>
-━━━━━━━━━━━━━━
-👽 <b>UFO9 BIG WIN ALERT</b>
-💰 <b>AUD ${amount.toFixed(2)}</b>
-🎰 <b>${provider}</b>
-📱 ${mobile}
-━━━━━━━━━━━━━━
-⚡ FAST PAYOUT SYSTEM
-🐸 Trusted by AU Players
-🪙 Deposit 5–15s ✅
-🪙 Withdraw 2–5min ✅
-━━━━━━━━━━━━━━
-🔥 <a href="https://ufo9.asia/RFUFO9TLG">CLICK NOW & WIN</a >`;
-  }
-
-  return `🎉 <b>CONGRATULATIONS!</b>
-━━━━━━━━━━━━━━
-👽 <b>UFO9 WIN UPDATE</b>
-💰 <b>AUD ${amount.toFixed(2)}</b>
-🎰 ${provider}
-📱 ${mobile}
-━━━━━━━━━━━━━━
-⚡ Fast & Secure Payout
-🪙 Deposit 5–15s
-🪙 Withdraw 2–5min
-━━━━━━━━━━━━━━
-🌐 <a href="https://ufo9.asia/RFUFO9TLG">PLAY NOW</a >`;
 }
 
 async function sendPhoto(imagePath, caption) {
@@ -155,6 +111,7 @@ function findMatchingWithdraw(withdraws, targetAmount) {
       throw new Error('Missing workflow input');
     }
 
+    // 小于 5000 时的拦截退出点
     if (TX_AMOUNT < MIN_AMOUNT) {
       console.log(`Amount below ${MIN_AMOUNT}, exit`);
       return;
